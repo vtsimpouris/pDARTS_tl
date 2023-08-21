@@ -16,7 +16,40 @@ import copy
 from model_search import Network
 from genotypes import PRIMITIVES
 from genotypes import Genotype
+#python train_search.py --epochs 10 --tmp_data_dir /pdarts --save log_path
 
+def show_alphas(model,switches_normal,switches_reduce,sp,num_to_keep,num_to_drop,sm_dim):
+    arch_param = model.module.arch_parameters()
+    normal_prob = F.softmax(arch_param[0], dim=sm_dim).data.cpu().numpy()
+    for i in range(14):
+        idxs = []
+        for j in range(len(PRIMITIVES)):
+            if switches_normal[i][j]:
+                idxs.append(j)
+        if sp == len(num_to_keep) - 1:
+            # for the last stage, drop all Zero operations
+            drop = get_min_k_no_zero(normal_prob[i, :], idxs, num_to_drop[sp])
+        else:
+            drop = get_min_k(normal_prob[i, :], num_to_drop[sp])
+        for idx in drop:
+            switches_normal[i][idxs[idx]] = False
+    reduce_prob = F.softmax(arch_param[1], dim=-1).data.cpu().numpy()
+    for i in range(14):
+        idxs = []
+        for j in range(len(PRIMITIVES)):
+            if switches_reduce[i][j]:
+                idxs.append(j)
+        if sp == len(num_to_keep) - 1:
+            drop = get_min_k_no_zero(reduce_prob[i, :], idxs, num_to_drop[sp])
+        else:
+            drop = get_min_k(reduce_prob[i, :], num_to_drop[sp])
+        for idx in drop:
+            switches_reduce[i][idxs[idx]] = False
+    print(np.shape(switches_normal))
+    print(np.shape(switches_reduce))
+    for i in range(len(model.module.cells)):
+        print('babis')
+        torch.save(model.module.cells[i], 'model_weights.pth')
 
 parser = argparse.ArgumentParser("cifar")
 parser.add_argument('--workers', type=int, default=2, help='number of workers to load dataset')
@@ -101,6 +134,7 @@ def main():
     criterion = nn.CrossEntropyLoss()
     criterion = criterion.cuda()
     switches = []
+    print(PRIMITIVES)
     for i in range(14):
         switches.append([True for j in range(len(PRIMITIVES))])
     switches_normal = copy.deepcopy(switches)
@@ -160,6 +194,7 @@ def main():
             logging.info('Train_acc %f', train_acc)
             epoch_duration = time.time() - epoch_start
             logging.info('Epoch time: %ds', epoch_duration)
+            show_alphas(model,switches_normal,switches_reduce,sp,num_to_keep,num_to_drop,sm_dim)
             # validation
             if epochs - epoch < 5:
                 valid_acc, valid_obj = infer(valid_queue, model, criterion)
