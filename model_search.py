@@ -14,9 +14,15 @@ class MixedOp(nn.Module):
         super(MixedOp, self).__init__()
         self.m_ops = nn.ModuleList()
         self.p = p
+        self.primitives = []
+        self.filters = []
+        self.strides = []
         for i in range(len(switch)):
             if switch[i]:
                 primitive = PRIMITIVES[i]
+                self.primitives.append(primitive)
+                self.filters.append(C)
+                self.strides.append(stride)
                 op = OPS[primitive](C, stride, False)
                 if 'pool' in primitive:
                     op = nn.Sequential(op, nn.BatchNorm2d(C, affine=False))

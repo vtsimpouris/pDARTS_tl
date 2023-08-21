@@ -18,39 +18,6 @@ from genotypes import PRIMITIVES
 from genotypes import Genotype
 #python train_search.py --epochs 10 --tmp_data_dir /pdarts --save log_path
 
-def show_alphas(model,switches_normal,switches_reduce,sp,num_to_keep,num_to_drop,sm_dim):
-    arch_param = model.module.arch_parameters()
-    normal_prob = F.softmax(arch_param[0], dim=sm_dim).data.cpu().numpy()
-    for i in range(14):
-        idxs = []
-        for j in range(len(PRIMITIVES)):
-            if switches_normal[i][j]:
-                idxs.append(j)
-        if sp == len(num_to_keep) - 1:
-            # for the last stage, drop all Zero operations
-            drop = get_min_k_no_zero(normal_prob[i, :], idxs, num_to_drop[sp])
-        else:
-            drop = get_min_k(normal_prob[i, :], num_to_drop[sp])
-        for idx in drop:
-            switches_normal[i][idxs[idx]] = False
-    reduce_prob = F.softmax(arch_param[1], dim=-1).data.cpu().numpy()
-    for i in range(14):
-        idxs = []
-        for j in range(len(PRIMITIVES)):
-            if switches_reduce[i][j]:
-                idxs.append(j)
-        if sp == len(num_to_keep) - 1:
-            drop = get_min_k_no_zero(reduce_prob[i, :], idxs, num_to_drop[sp])
-        else:
-            drop = get_min_k(reduce_prob[i, :], num_to_drop[sp])
-        for idx in drop:
-            switches_reduce[i][idxs[idx]] = False
-    print(np.shape(switches_normal))
-    print(np.shape(switches_reduce))
-    for i in range(len(model.module.cells)):
-        print('babis')
-        torch.save(model.module.cells[i], 'model_weights.pth')
-
 parser = argparse.ArgumentParser("cifar")
 parser.add_argument('--workers', type=int, default=2, help='number of workers to load dataset')
 parser.add_argument('--batch_size', type=int, default=96, help='batch size')
@@ -96,6 +63,23 @@ if args.cifar100:
 else:
     CIFAR_CLASSES = 10
     data_folder = 'cifar-10-batches-py'
+
+def save_op_weights(model,switches_normal):
+    #print(model.module.switches_normal)
+    for i in range(len(model.module.cells)):
+        cell = model.module.cells[i]
+        for j in range(len(cell.cell_ops)):
+            for k in range(len(cell.cell_ops[j].primitives)):
+                #print(cell.cell_ops[j].m_ops[k])
+                #print(cell.cell_ops[j].primitives)
+                ##print(cell.cell_ops[j].filters)
+                #print(cell.cell_ops[j].strides)
+                for l in range(14):
+                    print(switches_normal[l][k])
+                    if switches_normal[l][k]:
+                        path = 'cell{}_{}_{}_{}_weights.pth'.format(i,cell.cell_ops[j].primitives[k],cell.cell_ops[j].filters[k],cell.cell_ops[j].strides[k])
+                        torch.save(cell.cell_ops[j].m_ops[k].state_dict(), path)
+
 def main():
     if not torch.cuda.is_available():
         logging.info('No GPU device available')
@@ -194,12 +178,13 @@ def main():
             logging.info('Train_acc %f', train_acc)
             epoch_duration = time.time() - epoch_start
             logging.info('Epoch time: %ds', epoch_duration)
-            show_alphas(model,switches_normal,switches_reduce,sp,num_to_keep,num_to_drop,sm_dim)
             # validation
             if epochs - epoch < 5:
                 valid_acc, valid_obj = infer(valid_queue, model, criterion)
                 logging.info('Valid_acc %f', valid_acc)
+            #save_op_weights(model)
         utils.save(model, os.path.join(args.save, 'weights.pt'))
+        save_op_weights(model,switches_normal)
         print('------Dropping %d paths------' % num_to_drop[sp])
         # Save switches info for s-c refinement. 
         if sp == len(num_to_keep) - 1:
@@ -220,6 +205,8 @@ def main():
                 drop = get_min_k(normal_prob[i, :], num_to_drop[sp])
             for idx in drop:
                 switches_normal[i][idxs[idx]] = False
+        print('------Saving weights------')
+        save_op_weights(model, switches_normal)
         reduce_prob = F.softmax(arch_param[1], dim=-1).data.cpu().numpy()
         for i in range(14):
             idxs = []
