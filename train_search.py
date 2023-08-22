@@ -152,6 +152,9 @@ def main():
         switches.append([True for j in range(len(PRIMITIVES))])
     switches_normal = copy.deepcopy(switches)
     switches_reduce = copy.deepcopy(switches)
+
+    switches_normal = np.load('switches_normal.npy')
+    print(switches_normal)
     # To be moved to args
     num_to_keep = [5, 3, 1]
     num_to_drop = [3, 2, 2]
