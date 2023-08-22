@@ -16,7 +16,7 @@ import copy
 from model_search import Network
 from genotypes import PRIMITIVES
 from genotypes import Genotype
-#python train_search.py --epochs 10 --tmp_data_dir /pdarts --save log_path
+#python train_search.py --epochs 1 --tmp_data_dir /pdarts --save log_path
 
 parser = argparse.ArgumentParser("cifar")
 parser.add_argument('--workers', type=int, default=2, help='number of workers to load dataset')
@@ -66,21 +66,50 @@ else:
 
 def save_op_weights(model,switches_normal):
     #print(model.module.switches_normal)
+    np.save('switches_normal.npy', switches_normal)
+    #switches_normal = np.load('switches_normal.npy')
+    '''for i in range(len(model.module.cells)):
+        cell = model.module.cells[i]
+        path = 'cell{}.pth'.format(i)
+        torch.save(cell.state_dict(), path)'''
     for i in range(len(model.module.cells)):
         cell = model.module.cells[i]
+        for j in range(14):
+            for l in range(len(PRIMITIVES)):
+                #if switches_normal[j][l]:
+                    wpath = 'node{}_{}_{}_{}_weights.pth'.format(j, cell.cell_ops[j].primitives[l],
+                                                                cell.cell_ops[j].filters[l],
+                                                                cell.cell_ops[j].strides[l])
+                    cell_path = 'cell{}'.format(i)
+                    path = "C:\\Users\\SKIKK\\PycharmProjects\\pdarts\\" + cell_path
+                    if not os.path.exists(path):
+                        os.makedirs(path)
+                    torch.save(cell.cell_ops[j].m_ops[l].state_dict(), path + "\\" + wpath)
+
+
+    '''for i in range(len(model.module.cells)):
+        cell = model.module.cells[i]
         for j in range(len(cell.cell_ops)):
-            for k in range(len(cell.cell_ops[j].primitives)):
-                #print(cell.cell_ops[j].m_ops[k])
-                #print(cell.cell_ops[j].primitives)
-                ##print(cell.cell_ops[j].filters)
-                #print(cell.cell_ops[j].strides)
-                for l in range(14):
-                    print(switches_normal[l][k])
+            for l in range(14):
+                for k in range(len(cell.cell_ops[j].primitives)):
                     if switches_normal[l][k]:
                         path = 'cell{}_{}_{}_{}_weights.pth'.format(i,cell.cell_ops[j].primitives[k],cell.cell_ops[j].filters[k],cell.cell_ops[j].strides[k])
-                        torch.save(cell.cell_ops[j].m_ops[k].state_dict(), path)
+                        torch.save(cell.cell_ops[j].m_ops[k].state_dict(), path)'''
 
 def main():
+    delete = False
+    if(delete):
+        directory_path = "C:\\Users\\SKIKK\\PycharmProjects\\pdarts"
+
+        # List all files in the directory
+        files = os.listdir(directory_path)
+
+        # Iterate through the files and delete those with .pth extension
+        for file in files:
+            if file.endswith(".pth"):
+                file_path = os.path.join(directory_path, file)
+                os.remove(file_path)
+        sys.exit(1)
     if not torch.cuda.is_available():
         logging.info('No GPU device available')
         sys.exit(1)
@@ -184,7 +213,6 @@ def main():
                 logging.info('Valid_acc %f', valid_acc)
             #save_op_weights(model)
         utils.save(model, os.path.join(args.save, 'weights.pt'))
-        save_op_weights(model,switches_normal)
         print('------Dropping %d paths------' % num_to_drop[sp])
         # Save switches info for s-c refinement. 
         if sp == len(num_to_keep) - 1:
@@ -207,6 +235,7 @@ def main():
                 switches_normal[i][idxs[idx]] = False
         print('------Saving weights------')
         save_op_weights(model, switches_normal)
+        sys.exit(1)
         reduce_prob = F.softmax(arch_param[1], dim=-1).data.cpu().numpy()
         for i in range(14):
             idxs = []

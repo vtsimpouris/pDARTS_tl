@@ -6,17 +6,25 @@ from operations import *
 from torch.autograd import Variable
 from genotypes import PRIMITIVES
 from genotypes import Genotype
+import os
+import sys
 
+def find_file_in_folder(folder_path, target_filename):
+    for root, dirs, files in os.walk(folder_path):
+        if target_filename in files:
+            return os.path.join(root, target_filename)
+    return None
 
 class MixedOp(nn.Module):
 
-    def __init__(self, C, stride, switch, p):
+    def __init__(self, C, stride, switch, p, cell_num, node):
         super(MixedOp, self).__init__()
         self.m_ops = nn.ModuleList()
         self.p = p
         self.primitives = []
         self.filters = []
         self.strides = []
+        load = True
         for i in range(len(switch)):
             if switch[i]:
                 primitive = PRIMITIVES[i]
@@ -28,6 +36,14 @@ class MixedOp(nn.Module):
                     op = nn.Sequential(op, nn.BatchNorm2d(C, affine=False))
                 if isinstance(op, Identity) and p > 0:
                     op = nn.Sequential(op, nn.Dropout(self.p))
+                if load:
+                    folder_to_scan = "C:\\Users\\SKIKK\\PycharmProjects\\pdarts\\cell{}".format(cell_num)
+                    weights_file = 'node{}_{}_{}_{}_weights.pth'.format(node, primitive, C, stride)
+                    found_file_path = find_file_in_folder(folder_to_scan, weights_file)
+                    if found_file_path:
+                        op.load_state_dict(torch.load(folder_to_scan + "\\" + weights_file))
+                        for param in op.parameters():
+                            param.requires_grad = False
                 self.m_ops.append(op)
                 
     def update_p(self):
@@ -42,7 +58,7 @@ class MixedOp(nn.Module):
 
 class Cell(nn.Module):
 
-    def __init__(self, steps, multiplier, C_prev_prev, C_prev, C, reduction, reduction_prev, switches, p):
+    def __init__(self, steps, multiplier, C_prev_prev, C_prev, C, reduction, reduction_prev, switches, p, cell_num):
         super(Cell, self).__init__()
         self.reduction = reduction
         self.p = p
@@ -59,7 +75,7 @@ class Cell(nn.Module):
         for i in range(self._steps):
             for j in range(2+i):
                 stride = 2 if reduction and j < 2 else 1
-                op = MixedOp(C, stride, switch=switches[switch_count], p=self.p)
+                op = MixedOp(C, stride, switch=switches[switch_count], p=self.p, cell_num=cell_num, node=switch_count)
                 self.cell_ops.append(op)
                 switch_count = switch_count + 1
     
@@ -116,10 +132,10 @@ class Network(nn.Module):
             if i in [layers//3, 2*layers//3]:
                 C_curr *= 2
                 reduction = True
-                cell = Cell(steps, multiplier, C_prev_prev, C_prev, C_curr, reduction, reduction_prev, switches_reduce, self.p)
+                cell = Cell(steps, multiplier, C_prev_prev, C_prev, C_curr, reduction, reduction_prev, switches_reduce, self.p, i)
             else:
                 reduction = False
-                cell = Cell(steps, multiplier, C_prev_prev, C_prev, C_curr, reduction, reduction_prev, switches_normal, self.p)
+                cell = Cell(steps, multiplier, C_prev_prev, C_prev, C_curr, reduction, reduction_prev, switches_normal, self.p, i)
 #            cell = Cell(steps, multiplier, C_prev_prev, C_prev, C_curr, reduction, reduction_prev, switches)
             reduction_prev = reduction
             self.cells += [cell]
